@@ -1,4 +1,13 @@
 <?php
+// Capturar erros PHP e retornar como JSON
+set_exception_handler(function($e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Erro interno: ' . $e->getMessage()]);
+    exit;
+});
+error_reporting(E_ALL);
+ini_set('display_errors', 0);
+
 // Headers de segurança
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -14,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // Carrega a chave da API
 require_once __DIR__ . '/config.php';
 
-if (!defined('CLAUDE_API_KEY') || CLAUDE_API_KEY === 'sua-chave-aqui') {
+if (!defined('ANTHROPIC_API_KEY')) {
     http_response_code(500);
     echo json_encode(['error' => 'Servidor não configurado - chave API ausente']);
     exit;
@@ -104,7 +113,7 @@ if (!is_array($input)) {
     exit;
 }
 
-$validTemperaments = ['colérico', 'sanguíneo', 'fleumático', 'sentimental'];
+$validTemperaments = ['apaixonado', 'colérico', 'sanguíneo', 'sentimental', 'apático', 'fleumático', 'nervoso', 'amorfo'];
 
 $winner    = isset($input['winner'])    ? (string)$input['winner']    : '';
 $secondKey = isset($input['secondKey']) ? (string)$input['secondKey'] : null;
@@ -324,7 +333,7 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER     => [
         'Content-Type: application/json',
-        'x-api-key: ' . CLAUDE_API_KEY,
+        'x-api-key: ' . ANTHROPIC_API_KEY,
         'anthropic-version: 2023-06-01',
     ],
     CURLOPT_POSTFIELDS     => $requestBody,
