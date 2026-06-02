@@ -62,23 +62,34 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS config (
-        chave      VARCHAR(50)  NOT NULL PRIMARY KEY,
-        valor      VARCHAR(255) NOT NULL,
-        descricao  VARCHAR(255) DEFAULT NULL,
-        updated_at INT UNSIGNED NOT NULL
+        chave      VARCHAR(50)   NOT NULL PRIMARY KEY,
+        valor_int  INT           DEFAULT NULL COMMENT 'Para valores inteiros (ex: limite_consultas)',
+        valor_dec  DECIMAL(10,2) DEFAULT NULL COMMENT 'Para valores decimais (ex: valor_pix)',
+        descricao  VARCHAR(255)  DEFAULT NULL,
+        updated_at INT UNSIGNED  NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-    // Inserir padrões se não existirem
-    $pdo->prepare("INSERT IGNORE INTO config (chave, valor, descricao, updated_at) VALUES (?, ?, ?, ?)")
-        ->execute(['limite_consultas', '4', 'Máximo de consultas gratuitas por IP', time()]);
-    $pdo->prepare("INSERT IGNORE INTO config (chave, valor, descricao, updated_at) VALUES (?, ?, ?, ?)")
-        ->execute(['valor_pix', '1.00', 'Valor em reais para liberar novas consultas', time()]);
+    // Migration: se ainda existir coluna 'valor' (VARCHAR antigo), migrar e dropar
+    $cols = $pdo->query("SHOW COLUMNS FROM config LIKE 'valor'")->fetchAll();
+    if (!empty($cols)) {
+        $pdo->exec("ALTER TABLE config ADD COLUMN IF NOT EXISTS valor_int INT DEFAULT NULL");
+        $pdo->exec("ALTER TABLE config ADD COLUMN IF NOT EXISTS valor_dec DECIMAL(10,2) DEFAULT NULL");
+        $pdo->exec("UPDATE config SET valor_int = CAST(valor AS UNSIGNED) WHERE chave = 'limite_consultas'");
+        $pdo->exec("UPDATE config SET valor_dec = CAST(valor AS DECIMAL(10,2)) WHERE chave = 'valor_pix'");
+        $pdo->exec("ALTER TABLE config DROP COLUMN valor");
+    }
 
-    // Ler limite do banco
-    $cfgStmt = $pdo->prepare("SELECT valor FROM config WHERE chave = 'limite_consultas'");
+    // Inserir padrões se não existirem
+    $pdo->prepare("INSERT IGNORE INTO config (chave, valor_int, descricao, updated_at) VALUES ('limite_consultas', 4, 'Máximo de consultas gratuitas por IP', ?)")
+        ->execute([time()]);
+    $pdo->prepare("INSERT IGNORE INTO config (chave, valor_dec, descricao, updated_at) VALUES ('valor_pix', 1.00, 'Valor em reais para liberar novas consultas', ?)")
+        ->execute([time()]);
+
+    // Ler limite do banco (INT)
+    $cfgStmt = $pdo->prepare("SELECT valor_int FROM config WHERE chave = 'limite_consultas'");
     $cfgStmt->execute();
     $limiteRow = $cfgStmt->fetch(PDO::FETCH_ASSOC);
-    $limite = $limiteRow ? (int)$limiteRow['valor'] : 4;
+    $limite = $limiteRow ? (int)$limiteRow['valor_int'] : 4;
 
     $stmt = $pdo->prepare("SELECT count FROM ip_usage WHERE ip = ?");
     $stmt->execute([$clientIp]);
