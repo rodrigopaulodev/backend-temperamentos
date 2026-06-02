@@ -61,13 +61,32 @@ try {
         last_at  INT UNSIGNED NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS config (
+        chave      VARCHAR(50)  NOT NULL PRIMARY KEY,
+        valor      VARCHAR(255) NOT NULL,
+        descricao  VARCHAR(255) DEFAULT NULL,
+        updated_at INT UNSIGNED NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Inserir padrões se não existirem
+    $pdo->prepare("INSERT IGNORE INTO config (chave, valor, descricao, updated_at) VALUES (?, ?, ?, ?)")
+        ->execute(['limite_consultas', '4', 'Máximo de consultas gratuitas por IP', time()]);
+    $pdo->prepare("INSERT IGNORE INTO config (chave, valor, descricao, updated_at) VALUES (?, ?, ?, ?)")
+        ->execute(['valor_pix', '1.00', 'Valor em reais para liberar novas consultas', time()]);
+
+    // Ler limite do banco
+    $cfgStmt = $pdo->prepare("SELECT valor FROM config WHERE chave = 'limite_consultas'");
+    $cfgStmt->execute();
+    $limiteRow = $cfgStmt->fetch(PDO::FETCH_ASSOC);
+    $limite = $limiteRow ? (int)$limiteRow['valor'] : 4;
+
     $stmt = $pdo->prepare("SELECT count FROM ip_usage WHERE ip = ?");
     $stmt->execute([$clientIp]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($row && (int)$row['count'] >= 4) {
+    if ($row && (int)$row['count'] >= $limite) {
         http_response_code(429);
-        echo json_encode(['error' => 'Você atingiu o limite de 4 análises gratuitas.']);
+        echo json_encode(['error' => 'Você atingiu o limite de ' . $limite . ' análises gratuitas.']);
         exit;
     }
 
