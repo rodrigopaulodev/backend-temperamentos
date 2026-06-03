@@ -55,11 +55,23 @@ try {
     );
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS ip_usage (
-        ip       VARCHAR(45)  NOT NULL PRIMARY KEY,
-        count    INT          NOT NULL DEFAULT 0,
-        first_at INT UNSIGNED NOT NULL,
-        last_at  INT UNSIGNED NOT NULL
+        ip           VARCHAR(45)  NOT NULL PRIMARY KEY,
+        count        INT          NOT NULL DEFAULT 0,
+        first_at     INT UNSIGNED NOT NULL,
+        last_at      INT UNSIGNED NOT NULL,
+        dispositivo  VARCHAR(20)  DEFAULT NULL COMMENT 'mobile | desktop | tablet',
+        navegador    VARCHAR(50)  DEFAULT NULL COMMENT 'Chrome | Safari | Firefox...',
+        temperamento VARCHAR(30)  DEFAULT NULL COMMENT 'Último temperamento obtido',
+        referrer     VARCHAR(500) DEFAULT NULL COMMENT 'De onde veio o usuário'
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // Migration: adicionar novas colunas se não existirem
+    $existCols = $pdo->query("SHOW COLUMNS FROM ip_usage")->fetchAll(PDO::FETCH_COLUMN);
+    foreach (['dispositivo','navegador','temperamento','referrer'] as $col) {
+        if (!in_array($col, $existCols)) {
+            $pdo->exec("ALTER TABLE ip_usage ADD COLUMN $col VARCHAR(500) DEFAULT NULL");
+        }
+    }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS config (
         chave      VARCHAR(50)   NOT NULL PRIMARY KEY,
@@ -101,13 +113,31 @@ try {
         exit;
     }
 
+    // Extrair informações do User-Agent
+    $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $dispositivo = 'desktop';
+    if (preg_match('/Mobile|Android|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i', $ua)) {
+        $dispositivo = 'mobile';
+    } elseif (preg_match('/iPad|Tablet/i', $ua)) {
+        $dispositivo = 'tablet';
+    }
+    $navegador = 'Outro';
+    if (preg_match('/Edg\//i', $ua))            $navegador = 'Edge';
+    elseif (preg_match('/OPR\//i', $ua))        $navegador = 'Opera';
+    elseif (preg_match('/Chrome\//i', $ua))     $navegador = 'Chrome';
+    elseif (preg_match('/Safari\//i', $ua))     $navegador = 'Safari';
+    elseif (preg_match('/Firefox\//i', $ua))    $navegador = 'Firefox';
+
+    $referrer = isset($_SERVER['HTTP_REFERER']) ? substr($_SERVER['HTTP_REFERER'], 0, 500) : null;
+    $temperamento = isset($input['winner']) ? $input['winner'] : null;
+
     $now = time();
     if ($row) {
-        $pdo->prepare("UPDATE ip_usage SET count = count + 1, last_at = ? WHERE ip = ?")
-            ->execute([$now, $clientIp]);
+        $pdo->prepare("UPDATE ip_usage SET count = count + 1, last_at = ?, dispositivo = ?, navegador = ?, temperamento = ?, referrer = ? WHERE ip = ?")
+            ->execute([$now, $dispositivo, $navegador, $temperamento, $referrer, $clientIp]);
     } else {
-        $pdo->prepare("INSERT INTO ip_usage (ip, count, first_at, last_at) VALUES (?, 1, ?, ?)")
-            ->execute([$clientIp, $now, $now]);
+        $pdo->prepare("INSERT INTO ip_usage (ip, count, first_at, last_at, dispositivo, navegador, temperamento, referrer) VALUES (?, 1, ?, ?, ?, ?, ?, ?)")
+            ->execute([$clientIp, $now, $now, $dispositivo, $navegador, $temperamento, $referrer]);
     }
 } catch (Exception $e) {
     // MySQL indisponível: não bloqueia o usuário, apenas registra o erro
